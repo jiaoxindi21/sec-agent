@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sec-agent</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f7f7f8;--sidebar:#fbfbfc;--border:#e5e5e6;--text:#1a1a1a;--muted:#6b6b6f;--accent:#d97706;--accent-hover:#b45309;--user-bubble:#1a1a1a;--user-text:#fff;--assistant-bubble:#fff}
+html,body{height:100%;font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:15px}
+.app{display:flex;height:100vh}
+
+/* 左侧边栏 */
+.sidebar{width:260px;background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.sidebar-head{padding:16px 16px 12px;font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px}
+.sidebar-head .logo{width:26px;height:26px;background:var(--accent);color:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.sidebar-new{padding:12px 16px}
+.new-chat-btn{width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.new-chat-btn:hover{background:#f0f0f0}
+.sidebar-label{padding:16px 16px 6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.cap-list{padding:4px 16px;font-size:13px;color:var(--muted);line-height:1.8;overflow-y:auto}
+.cap-list b{color:var(--text);font-weight:600}
+.sidebar-footer{margin-top:auto;padding:16px;font-size:12px;color:var(--muted);border-top:1px solid var(--border)}
+.sidebar-footer a{color:var(--accent);text-decoration:none}
+
+/* 主对话区 */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.chat-header{padding:14px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:#fff}
+.chat-header .title{font-weight:600;font-size:15px}
+.chat-header .badge{font-size:12px;color:var(--accent);background:#fef3c7;padding:3px 10px;border-radius:12px}
+.messages{flex:1;overflow-y:auto;padding:24px 0}
+.msg-wrap{max-width:760px;margin:0 auto;padding:0 24px}
+.msg{display:flex;margin-bottom:24px;gap:14px}
+.msg.avatar{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;font-weight:700}
+.msg.user{justify-content:flex-end}
+.msg.user .avatar{background:#8e8ea0;order:2}
+.bubble{max-width:80%;padding:12px 16px;border-radius:16px;line-height:1.7;font-size:14.5px;white-space:pre-wrap;word-break:break-word}
+.msg.user .bubble{background:var(--user-bubble);color:var(--user-text);border-bottom-right-radius:4px}
+.msg.assistant .bubble{background:var(--assistant-bubble);border:1px solid var(--border);border-bottom-left-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.bubble b{font-weight:600}
+.bubble ul{padding-left:18px}
+.bubble .tool-line{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+.tool-pill{background:#f3f4f6;border:1px solid var(--border);color:#374151;padding:3px 10px;border-radius:6px;font-size:12px;font-family:ui-monospace,monospace}
+.bubble .report-frame{border:1px solid var(--border);border-radius:10px;margin-top:10px;overflow:hidden;background:#fff}
+.bubble .report-frame iframe{width:100%;height:340px;border:none}
+.typing{display:flex;align-items:center;gap:6px;padding:4px 0}
+.typing span{width:7px;height:7px;background:#d0d0d4;border-radius:50%;animation:blink 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.3}40%{opacity:1}}
+
+/* 输入区 */
+.input-area{padding:12px 24px 24px;border-top:1px solid var(--border);background:var(--bg)}
+.input-box{max-width:760px;margin:0 auto;background:#fff;border:1px solid var(--border);border-radius:16px;padding:6px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.input-box.focus{border-color:#d97706;box-shadow:0 0 0 3px rgba(217,119,6,.12)}
+.textarea{width:100%;border:none;outline:none;resize:none;font-family:inherit;font-size:15px;padding:10px 12px;min-height:44px;max-height:180px;line-height:1.6;color:var(--text)}
+.input-tools{display:flex;align-items:center;justify-content:space-between;padding:6px 8px 4px}
+.left-tools{display:flex;align-items:center;gap:8px}
+.tool-btn{width:34px;height:34px;border:none;background:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted)}
+.tool-btn:hover{background:#f3f4f6}
+.send-btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.send-btn:hover{background:var(--accent-hover)}
+.send-btn:disabled{opacity:.5;cursor:not-allowed}
+.file-chip{display:inline-flex;align-items:center;gap:8px;background:#fef3c7;border:1px solid #fcd34d;border-radius:12px;padding:6px 12px;margin:6px 0;font-size:13px;color:#92400e}
+.file-chip button{border:none;background:none;color:#92400e;cursor:pointer;font-size:14px}
+.hint{max-width:760px;margin:6px auto 0;text-align:center;font-size:12px;color:var(--muted)}
+.suggest-row{max-width:760px;margin:0 auto 12px;display:flex;gap:8px;flex-wrap:wrap;padding:0 24px}
+.suggest{background:#fff;border:1px solid var(--border);border-radius:16px;padding:8px 14px;font-size:13px;color:var(--text);cursor:pointer}
+.suggest:hover{border-color:var(--accent);color:var(--accent)}
+
+/* 结果可视化 */
+.stat-cards{display:flex;gap:12px;margin:10px 0}
+.stat{flex:1;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:#fff;text-align:center}
+.stat .num{font-size:26px;font-weight:700}
+.stat .lbl{font-size:12px;color:var(--muted);margin-top:2px}
+.stat.total .num{color:var(--text)}
+.stat.attack .num{color:#c0392b}
+.stat.fp .num{color:#16a34a}
+.subtitle{font-size:12px;color:var(--muted);font-weight:600;margin:14px 0 8px;letter-spacing:.02em}
+.detail-table{width:100%;border-collapse:collapse;margin:0 0 6px}
+.detail-table th,.detail-table td{border:1px solid var(--border);padding:7px 10px;text-align:left;font-size:12.5px}
+.detail-table th{background:#fafafa;color:var(--muted);font-weight:600}
+.badge-v{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge-v.attack{background:#fee2e2;color:#c0392b}
+.badge-v.fp{background:#dcfce7;color:#16a34a}
+.event-card{margin:6px 0;padding:10px 14px;border:1px solid #fecdd3;background:#fff1f2;border-radius:10px;font-size:13px;color:#9f1239}
+.event-card b{color:#be123c}
+.report-preview{border:1px solid var(--border);border-radius:12px;margin-top:12px;overflow:hidden;background:#fff}
+.report-preview iframe{width:100%;height:420px;border:none}
+.report-preview .rhead{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#fafafa;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+.report-preview .rhead a{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- 侧边栏 -->
+  <aside class="sidebar">
+    <div class="sidebar-head"><span class="logo">S</span> sec-agent</div>
+    <div class="sidebar-new"><button class="new-chat-btn" onclick="resetChat()">＋ 新对话</button></div>
+    <div class="sidebar-label">Agent 能力</div>
+    <div class="cap-list">
+      <b>告警批量分析</b><br>两阶段聚类 + LLM 判定误报<br>
+      <b>生成分析报告</b><br>自动渲染 HTML 报告<br>
+      <b>告警明细查询</b><br>关键词 / ID 定位<br>
+      <b>结果通知</b><br>投递到指定渠道<br>
+      <b>事件汇总</b><br>来源 IP 时序关联
+    </div>
+    <div class="sidebar-footer">
+      引擎：<b>LangGraph StateGraph</b> · ReAct 循环<br>
+      <a href="http://localhost:8080">← 返回 sec-analyzer</a>
+    </div>
+  </aside>
+
+  <!-- 主区 -->
+  <main class="main">
+    <div class="chat-header">
+      <div class="title">告警自动研判 Agent</div>
+      <div class="badge">LangGraph ReAct</div>
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="msg-wrap">
+        <div class="msg assistant">
+          <div class="avatar">S</div>
+          <div class="bubble">你好，我是 <b>sec-agent</b> —— 基于 LangGraph 的告警自动研判 Agent。
+我收到你的任务后，会自主规划步骤、调用工具、循环决策，直到完成。
+
+你可以试试：
+• <i>分析告警并生成报告</i>
+• <i>查询告警里的 SQL 注入</i>
+• <i>分析上传的告警文件并通知我</i></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="suggest-row">
+      <span class="suggest" onclick="sendSuggest(this)">分析告警并生成报告</span>
+      <span class="suggest" onclick="sendSuggest(this)">查询 SQL 注入告警</span>
+      <span class="suggest" onclick="sendSuggest(this)">分析上传文件并汇总</span>
+      <span class="suggest" onclick="sendSuggest(this)">你都有什么功能</span>
+    </div>
+
+    <div class="input-area">
+      <div class="input-box" id="inputBox">
+        <textarea id="input" class="textarea" placeholder="给 sec-agent 发消息…" rows="1"></textarea>
+        <div class="file-chip" id="fileChips" style="display:none"></div>
+        <div class="input-tools">
+          <div class="left-tools">
+            <button class="tool-btn" id="uploadBtn" title="上传告警 JSON（可多选）">📎</button>
+            <input type="file" id="fileInput" accept=".json" multiple style="display:none">
+          </div>
+          <button class="send-btn" id="sendBtn" onclick="send()">发送 ↑</button>
+        </div>
+      </div>
+      <div class="hint">Agent 可用工具：analyze_alerts · generate_report · query_alert_detail · notify · list_capabilities</div>
+    </div>
+  </main>
+</div>
+
+<script>
+let uploadedPath = '';
+let isRunning = false;
+
+// 自动增高输入框
+const input = document.getElementById('input');
+input.addEventListener('input', ()=>{
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 180) + 'px';
+});
+input.addEventListener('keydown', (e)=>{
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+});
+document.getElementById('inputBox').addEventListener('click', ()=>document.getElementById('inputBox').classList.add('focus'));
+document.addEventListener('click', (e)=>{
+  if(!document.getElementById('inputBox').contains(e.target)) document.getElementById('inputBox').classList.remove('focus');
+});
+
+// 上传（支持多文件）
+let uploadedPaths = [];
+document.getElementById('uploadBtn').addEventListener('click', ()=>document.getElementById('fileInput').click());
+document.getElementById('fileInput').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files);
+  if(!files.length) return;
+  const fd = new FormData();
+  files.forEach(f=>fd.append('file', f));
+  const res = await fetch('/api/agent/upload', {method:'POST', body:fd});
+  const data = await res.json();
+  if(data.ok && data.files.length){
+    data.files.forEach(x=>uploadedPaths.push(x.filepath));
+    renderFileChips();
+    if(data.files.length===1) document.getElementById('task').value = '分析上传的告警文件，生成报告';
+    else document.getElementById('task').value = `分析上传的${data.files.length}个告警文件，合并生成报告`;
+  } else alert(data.error || '上传失败');
+  e.target.value='';
+});
+function renderFileChips(){
+  const box = document.getElementById('fileChips');
+  box.style.display = uploadedPaths.length ? 'inline-flex' : 'none';
+  box.innerHTML = uploadedPaths.map((p,i)=>
+    `<span class="file-chip">📄 文件${i+1} <button onclick="removeFile(${i})">✕</button></span>`).join('');
+}
+function removeFile(i){ uploadedPaths.splice(i,1); renderFileChips(); }
+
+function appendMsg(role, html){
+  const wrap = document.querySelector('.msg-wrap');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = `<div class="avatar">${role==='user'?'我':'S'}</div><div class="bubble">${html}</div>`;
+  wrap.appendChild(div);
+  scrollBottom();
+  return div;
+}
+function scrollBottom(){ const m=document.getElementById('messages'); m.scrollTop=m.scrollHeight; }
+
+function renderAgentResult(final, steps){
+  let html = '';
+  // 从执行轨迹中提取 analyze_alerts 的结果（含 stage1_results / attack_events / 统计）
+  let analyze = null;
+  if(steps && steps.length){
+    html += '<div class="subtitle">工具调用轨迹</div>';
+    steps.forEach(s=>{
+      html += `<div class="tool-line"><span class="tool-pill">${s.action}</span><span style="color:#6b6b6f;font-size:12px">✓ 完成</span></div>`;
+      if(s.action==='analyze_alerts' && s.observation && !s.observation.error) analyze = s.observation;
+    });
+  }
+
+  // 统计卡片
+  if(analyze){
+    html += `<div class="stat-cards">
+      <div class="stat total"><div class="num">${analyze.total_alerts||0}</div><div class="lbl">总告警</div></div>
+      <div class="stat attack"><div class="num">${analyze.attack_count||0}</div><div class="lbl">真实攻击</div></div>
+      <div class="stat fp"><div class="num">${analyze.fp_count||0}</div><div class="lbl">误报</div></div>
+    </div>`;
+    // 聚类明细表
+    const s1 = analyze.stage1_results || {};
+    const keys = Object.keys(s1);
+    if(keys.length){
+      html += '<div class="subtitle">聚类判定明细（规则 · 主机/路径）</div><table class="detail-table">';
+      html += '<tr><th>规则 @ 主机/路径</th><th>结论</th><th>数量</th><th>判定理由</th></tr>';
+      keys.forEach(k=>{
+        const v = s1[k];
+        const cls = v.verdict==='真实告警' ? 'attack' : 'fp';
+        html += `<tr><td style="word-break:break-all">${escapeHtml(k)}</td>
+          <td><span class="badge-v ${cls}">${v.verdict==='真实告警'?'攻击':'误报'}</span></td>
+          <td>${v.count}</td><td style="font-size:12px;color:#666">${escapeHtml((v.reasons||[]).join('；')||'-')}</td></tr>`;
+      });
+      html += '</table>';
+    }
+    // 攻击事件
+    const evs = analyze.attack_events || [];
+    if(evs.length){
+      html += '<div class="subtitle">攻击事件（来源 IP 时序关联）</div>';
+      evs.forEach(e=>{
+        html += `<div class="event-card">⚠ 来源 <b>${escapeHtml(e.src_ip)}</b> · 关联 ${e.count} 条告警 · 涉及规则 ${(e.rules||[]).map(r=>escapeHtml(r)).join(', ')}</div>`;
+      });
+    }
+  } else {
+    html += `<div class="subtitle">执行结果</div>${escapeHtml(final.text)}`;
+  }
+
+  // 报告预览（用 blob URL，避免转义导致白屏）
+  if(final.report_html){
+    const blob = new Blob([final.report_html], {type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    html += `<div class="report-preview">
+      <div class="rhead"><span>📄 分析报告</span><a href="${url}" target="_blank">在新窗口打开 ↗</a></div>
+      <iframe src="${url}"></iframe>
+    </div>`;
+  }
+  return html;
+}
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function send(text){
+  if(isRunning) return;
+  const msg = (text||input.value).trim();
+  if(!msg) return;
+  input.value=''; input.style.height='auto';
+  appendMsg('user', escapeHtml(msg));
+  const typing = appendMsg('assistant', `<div class="typing"><span></span><span></span><span></span></div>`);
+  isRunning = true; document.getElementById('sendBtn').disabled = true;
+  try{
+    const res = await fetch('/api/agent/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({task:msg, filepaths:uploadedPaths})});
+    const data = await res.json();
+    if(data.error){ typing.querySelector('.bubble').innerHTML = `<span style="color:red">${escapeHtml(data.error)}</span>`; return; }
+    typing.querySelector('.bubble').innerHTML = renderAgentResult(data.final, data.steps);
+    scrollBottom();
+  }catch(e){
+    typing.querySelector('.bubble').innerHTML = `<span style="color:red">请求失败：${escapeHtml(e.message)}</span>`;
+  }finally{
+    isRunning=false; document.getElementById('sendBtn').disabled=false;
+  }
+}
+function sendSuggest(el){ send(el.textContent); }
+function resetChat(){ document.querySelector('.msg-wrap').innerHTML = ''; uploadedPaths=[]; renderFileChips(); }
+</script>
+</body>
+</html>
