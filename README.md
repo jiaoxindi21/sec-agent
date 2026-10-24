@@ -35,7 +35,7 @@ export DEEPSEEK_API_KEY="sk-..."   # 建议配置；不配则走规则规划器�
 python app.py                       # 访问 http://localhost:8081
 ```
 
-> **Key 安全**：真实 key 请放在项目根目录 `.env`（已被 `.gitignore` 排除，不会提交），或通过环境变量注入。切勿硬编码进源码。
+> **Key 安全**：真实 key 请放在项目根目录 `.env`，或通过环境变量注入。切勿硬编码进源码。
 
 ---
 
