@@ -21,11 +21,12 @@ if not os.environ.get("DEEPSEEK_API_KEY") and os.path.exists(_env_file):
                 _k, _v = _line.strip().split("=", 1)
                 os.environ.setdefault(_k.strip(), _v.strip())
 
+import config
 from agent import Agent
 import tools
 
 app = Flask(__name__)
-app.secret_key = "sec-agent-secret"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-only-change-me-in-production")
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")

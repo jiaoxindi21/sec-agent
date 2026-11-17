@@ -120,8 +120,7 @@ def query_alert_detail(filepath: str, alert_id=None, keyword="") -> dict:
     """在告警文件中定位某条告警，返回原始报文字段"""
     if not os.path.exists(filepath):
         return {"error": f"文件不存在: {filepath}"}
-    with open(filepath, "r", encoding="utf-8") as f:
-        alerts = json.load(f)
+    alerts = _load_records(filepath)  # 统一走 JSON/JSONL 兼容读取，与分析工具口径一致
     if alert_id is not None:
         hits = [a for a in alerts if a.get("alert_id") == alert_id]
     elif keyword:
@@ -202,31 +201,34 @@ def list_capabilities() -> dict:
     return {"capabilities": caps, "count": len(caps)}
 
 
-# ============ 工具注册表 ============
-TOOLS = [
-    {"name": "analyze_alerts", "description": "分析告警文件，输入文件路径，输出聚类+判定结果",
-     "func": analyze_alerts, "params": {"filepath": "string"}},
-    {"name": "query_alert_detail", "description": "查询告警文件中的某条告警明细，输入文件路径和关键词或告警ID",
-     "func": query_alert_detail, "params": {"filepath": "string", "keyword": "string", "alert_id": "integer"}},
-    {"name": "generate_report", "description": "把分析结果生成 HTML 报告，输入分析结果对象，输出报告路径",
-     "func": generate_report, "params": {"result": "object"}},
-    {"name": "notify", "description": "发送结果通知，输入消息文本，输出投递状态",
-     "func": notify, "params": {"message": "string", "channel": "string"}},
-    {"name": "list_capabilities", "description": "返回 Agent 的能力清单，回答用户问'你能做什么'",
-     "func": list_capabilities, "params": {}},
-]
+# ============ 工具注册表（字典化：O(1) 查找 + 单一数据源）============
+TOOLS = {
+    "analyze_alerts": {"description": "分析告警文件，输入文件路径，输出聚类+判定结果",
+                       "func": analyze_alerts, "params": {"filepath": "string"}},
+    "query_alert_detail": {"description": "查询告警文件中的某条告警明细，输入文件路径和关键词或告警ID",
+                           "func": query_alert_detail, "params": {"filepath": "string", "keyword": "string", "alert_id": "integer"}},
+    "generate_report": {"description": "把分析结果生成 HTML 报告，输入分析结果对象，输出报告路径",
+                        "func": generate_report, "params": {"result": "object"}},
+    "notify": {"description": "发送结果通知，输入消息文本，输出投递状态",
+               "func": notify, "params": {"message": "string", "channel": "string"}},
+    "list_capabilities": {"description": "返回 Agent 的能力清单，回答用户问'你能做什么'",
+                          "func": list_capabilities, "params": {}},
+}
+
+
+def register_tool(name: str, func, description: str, params: dict):
+    """运行时注册新工具：新增工具后 planner 通过 tool_schema_text 自动感知，提示词零改动。"""
+    TOOLS[name] = {"description": description, "func": func, "params": params}
 
 
 def get_tool(name: str):
-    for t in TOOLS:
-        if t["name"] == name:
-            return t["func"]
-    return None
+    spec = TOOLS.get(name)
+    return spec["func"] if spec else None
 
 
 def tool_schema_text() -> str:
-    """给 LLM 看的工具说明"""
-    lines = []
-    for t in TOOLS:
-        lines.append(f"- {t['name']}({json.dumps(t['params'], ensure_ascii=False)}): {t['description']}")
-    return "\n".join(lines)
+    """给 LLM 看的工具说明（由注册表动态生成，保证提示词与可实现能力一致）"""
+    return "\n".join(
+        f"- {name}({json.dumps(spec['params'], ensure_ascii=False)}): {spec['description']}"
+        for name, spec in TOOLS.items()
+    )

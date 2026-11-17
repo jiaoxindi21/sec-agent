@@ -16,13 +16,17 @@ sec-agent 核心引擎 —— 基于 LangGraph 的 ReAct Agent
 """
 import json
 import os
+from collections import Counter
 from typing import TypedDict
 
 from langgraph.graph import StateGraph, START, END
 
+import config
 import tools
 
 MAX_STEPS = 8
+MAX_MESSAGES = 12          # 历史轮次上限，防止长对话 token 膨胀
+LLM_TIMEOUT = 30           # 单次 LLM 调用超时（秒）
 
 # ---------- 状态定义 ----------
 class AgentState(TypedDict):
@@ -47,9 +51,10 @@ class Agent:
     def _llm(self, messages: list, temperature: float = 0.3) -> dict:
         from openai import OpenAI
         if self._llm_client is None:
-            self._llm_client = OpenAI(api_key=self.api_key, base_url="https://api.deepseek.com")
+            self._llm_client = OpenAI(api_key=self.api_key, base_url=config.DEEPSEEK_BASE_URL,
+                                      timeout=LLM_TIMEOUT, max_retries=1)
         resp = self._llm_client.chat.completions.create(
-            model="deepseek-chat", messages=messages,
+            model=config.DEEPSEEK_MODEL, messages=messages,
             response_format={"type": "json_object"}, temperature=temperature,
         )
         return json.loads(resp.choices[0].message.content)
@@ -73,11 +78,15 @@ class Agent:
                     "- 若上一 Observation 显示结果已就绪、不需要再调工具，返回 finish\n"
                     "- analyze_alerts 的 filepath 取任务的告警文件路径"
                 )
-                r = self._llm([{"role": "system", "content": system}] + messages)
+                r = self._llm([{"role": "system", "content": system}] + messages[-MAX_MESSAGES:])
                 if r.get("finish"):
                     return {"pending_action": "FINISH", "pending_args": {}, "final_text": r.get("summary", "任务完成。")}
                 tool = r.get("tool", "list_capabilities")
                 args = r.get("args", {})
+                # 校验工具名：LLM 幻觉出不存在的工具时降级到能力清单，避免执行器拿到 None
+                if not tools.get_tool(tool):
+                    tool = "list_capabilities"
+                    args = {}
                 # analyze_alerts 必须有文件路径；LLM 留空时强制用任务文件或默认示例
                 if tool == "analyze_alerts":
                     if not args.get("filepath"):
@@ -177,7 +186,7 @@ class Agent:
         initial = {
             "task": task,
             "filepath": filepath,
-            "messages": [{"role": "user", "content": f"任务：{task}"}] + self._context(),
+            "messages": [{"role": "user", "content": f"任务：{task}"}] + self._context(filepath),
             "steps": [],
             "step_count": 0,
             "pending_action": "",
@@ -196,9 +205,24 @@ class Agent:
             "graph": "LangGraph StateGraph",
         }
 
-    def _context(self) -> list:
-        """给 planner 的系统上下文：任务数据概要"""
-        return []
+    def _context(self, filepath: str = "") -> list:
+        """给 planner 的数据概要：让 LLM 依据真实事件数据（规模/规则分布）调度工具，
+        而不是只看用户的自然语言任务。这是"数据驱动调度"的关键。"""
+        if not filepath or not os.path.exists(filepath):
+            return []
+        try:
+            records = tools._load_records(filepath)
+            if not records:
+                return []
+            normalized = tools._normalize(records)
+            rules = Counter(a.get("rule_id", "?") for a in normalized)
+            top = ", ".join(f"{k}×{v}" for k, v in rules.most_common(3))
+            summary = (f"[数据概要] 已载入 {len(normalized)} 条记录，"
+                       f"规则分布 Top3：{top}。来源格式："
+                       f"{'AAS-Api' if isinstance(records[0], dict) and 'auditLogId' in records[0] else 'sample'}。")
+            return [{"role": "system", "content": summary}]
+        except Exception:
+            return []  # 概要生成失败不应阻断主流程
 
     def _summarize(self, last_obs, final_text, steps=None):
         # 从已执行步骤里找最有价值的结果（report > analyze > query > capabilities）
